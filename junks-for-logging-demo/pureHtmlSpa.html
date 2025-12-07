@@ -3,14 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pure JS SPA</title>
+    <title>Advanced Pure SPA</title>
     <style>
-      /* --- CSS Reset & Variables --- */
+      /* --- CSS Variables & Dark Mode --- */
       :root {
-        --primary-color: #3b82f6;
-        --text-color: #333;
-        --bg-color: #f4f4f9;
-        --nav-bg: #ffffff;
+        --primary: #6366f1;
+        --bg: #f8fafc;
+        --card-bg: #ffffff;
+        --text: #1e293b;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+        --nav-bg: rgba(255, 255, 255, 0.9);
+      }
+
+      /* Dark Theme Class */
+      body.dark-mode {
+        --primary: #818cf8;
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f1f5f9;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --nav-bg: rgba(30, 41, 59, 0.9);
       }
 
       * {
@@ -20,26 +34,25 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        line-height: 1.6;
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
+        font-family: "Segoe UI", sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+        transition: background 0.3s, color 0.3s;
+        padding-bottom: 50px;
       }
 
       /* --- Navigation --- */
       header {
-        background-color: var(--nav-bg);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         position: sticky;
         top: 0;
+        background: var(--nav-bg);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+        z-index: 100;
       }
 
       nav {
-        max-width: 800px;
+        max-width: 900px;
         margin: 0 auto;
         padding: 1rem;
         display: flex;
@@ -48,83 +61,117 @@
       }
 
       .logo {
-        font-weight: bold;
-        font-size: 1.5rem;
-        color: var(--primary-color);
+        font-weight: 800;
+        font-size: 1.25rem;
+        color: var(--primary);
         text-decoration: none;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 20px;
+        align-items: center;
       }
 
       .nav-links a {
         text-decoration: none;
-        color: var(--text-color);
-        margin-left: 20px;
-        font-weight: 500;
-        transition: color 0.3s;
+        color: var(--text-muted);
+        font-weight: 600;
+        transition: color 0.2s;
       }
 
       .nav-links a:hover,
       .nav-links a.active {
-        color: var(--primary-color);
+        color: var(--primary);
       }
 
-      /* --- Main Content Area --- */
+      /* Theme Toggle Button */
+      .theme-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 5px 10px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      /* --- Layout & Grid --- */
       main {
-        flex: 1;
-        max-width: 800px;
-        width: 100%;
+        max-width: 900px;
         margin: 2rem auto;
         padding: 0 1rem;
-        animation: fadeIn 0.5s ease-in-out;
       }
 
-      /* --- Dynamic View Styles --- */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+      }
+
+      /* --- Cards --- */
       .card {
-        background: white;
-        padding: 2rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        transition: transform 0.2s;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
       }
 
-      h1 {
-        margin-bottom: 1rem;
+      .card:hover {
+        transform: translateY(-2px);
+        border-color: var(--primary);
+      }
+
+      h2 {
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
       }
       p {
+        color: var(--text-muted);
+        font-size: 0.9rem;
         margin-bottom: 1rem;
       }
 
-      button {
-        background-color: var(--primary-color);
+      /* --- Buttons --- */
+      .btn {
+        background-color: var(--primary);
         color: white;
         border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
+        padding: 8px 16px;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 1rem;
-      }
-
-      button:hover {
-        opacity: 0.9;
-      }
-
-      /* --- Footer --- */
-      footer {
-        text-align: center;
-        padding: 1rem;
-        background-color: var(--nav-bg);
-        border-top: 1px solid #ddd;
         font-size: 0.9rem;
-        color: #666;
+        align-self: flex-start;
+      }
+      .btn.outline {
+        background: transparent;
+        border: 1px solid var(--primary);
+        color: var(--primary);
+      }
+      .btn:active {
+        transform: scale(0.98);
       }
 
-      /* --- Animations --- */
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-          transform: translateY(10px);
+      /* --- Loading Spinner --- */
+      .spinner {
+        border: 4px solid var(--border);
+        border-top: 4px solid var(--primary);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 50px auto;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
         }
-        to {
-          opacity: 1;
-          transform: translateY(0);
+        100% {
+          transform: rotate(360deg);
         }
       }
     </style>
@@ -132,109 +179,177 @@
   <body>
     <header>
       <nav>
-        <a href="#home" class="logo">PureSPA</a>
+        <a href="#home" class="logo">PureSPA Pro</a>
         <div class="nav-links">
           <a href="#home" data-link>Home</a>
-          <a href="#about" data-link>About</a>
-          <a href="#contact" data-link>Contact</a>
+          <a href="#posts" data-link>Posts (API)</a>
+          <a href="#saved" data-link>Saved (<span id="saved-count">0</span>)</a>
+          <button class="theme-btn" onclick="toggleTheme()">🌓 Theme</button>
         </div>
       </nav>
     </header>
 
     <main id="app"></main>
 
-    <footer>
-      <p>&copy; 2023 Pure HTML/JS SPA. No Frameworks.</p>
-    </footer>
-
     <script>
-      // --- 1. Define Routes & Content ---
-      // In a real app, this might fetch HTML templates from a server.
-      const routes = {
-        home: `
-                <div class="card">
-                    <h1>Welcome Home 🏠</h1>
-                    <p>This is a single page application built without React, Vue, or Angular.</p>
-                    <p>It uses <strong>Hash Routing</strong> to switch content without reloading the page.</p>
-                    <button onclick="window.location.hash = '#about'">Go to About</button>
-                </div>
-            `,
-        about: `
-                <div class="card">
-                    <h1>About Us 📖</h1>
-                    <p>We believe in the power of vanilla JavaScript.</p>
-                    <p>SPAs work by intercepting navigation and swapping the HTML inside a main container div.</p>
-                    <ul>
-                        <li>Fast navigation</li>
-                        <li>No page reloads</li>
-                        <li>Clean architecture</li>
-                    </ul>
-                </div>
-            `,
-        contact: `
-                <div class="card">
-                    <h1>Contact ✉️</h1>
-                    <p>Want to get in touch? This form does nothing, but it looks nice!</p>
-                    <form onsubmit="event.preventDefault(); alert('Message sent (hypothetically)!')">
-                        <div style="margin-bottom: 10px;">
-                            <label style="display:block; margin-bottom:5px">Email</label>
-                            <input type="email" placeholder="you@example.com" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" required>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display:block; margin-bottom:5px">Message</label>
-                            <textarea rows="3" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"></textarea>
-                        </div>
-                        <button type="submit">Send Message</button>
-                    </form>
-                </div>
-            `,
-        404: `
-                <div class="card" style="text-align: center; color: #d32f2f;">
-                    <h1>404 Not Found</h1>
-                    <p>Oops! The page you are looking for doesn't exist.</p>
-                    <a href="#home" style="color: var(--primary-color);">Go back home</a>
-                </div>
-            `,
+      // --- 1. STATE MANAGEMENT ---
+      const state = {
+        posts: [], // Will store data fetched from API
+        savedIds: new Set(), // Will store IDs of favorites
+        hasFetched: false,
       };
 
-      // --- 2. The Router Function ---
-      function router() {
-        // Get the current hash (remove the # symbol). Default to 'home'.
+      // --- 2. HELPERS ---
+
+      // Dark Mode Logic
+      function initTheme() {
+        const savedTheme = localStorage.getItem("theme");
+        if (savedTheme === "dark") document.body.classList.add("dark-mode");
+      }
+
+      function toggleTheme() {
+        document.body.classList.toggle("dark-mode");
+        const isDark = document.body.classList.contains("dark-mode");
+        localStorage.setItem("theme", isDark ? "dark" : "light");
+      }
+
+      // --- 3. VIEW FUNCTIONS (Components) ---
+      // Instead of static strings, we use functions that return HTML strings.
+
+      const Views = {
+        home: async () => `
+                <div style="text-align:center; padding: 40px 20px;">
+                    <h1 style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--primary);">Pure JS Features</h1>
+                    <p style="font-size: 1.1rem; max-width: 600px; margin: 0 auto 30px;">
+                        This example demonstrates <strong>Async Data Fetching</strong>, 
+                        <strong>Global State Management</strong>, and <strong>Theme Toggling</strong> 
+                        without a single library.
+                    </p>
+                    <a href="#posts" class="btn" style="text-decoration:none; font-size: 1.1rem;">Browse Posts via API &rarr;</a>
+                </div>
+            `,
+
+        posts: async () => {
+          // If we haven't fetched data yet, fetch it now.
+          if (!state.hasFetched) {
+            try {
+              const res = await fetch(
+                "https://jsonplaceholder.typicode.com/posts?_limit=12"
+              );
+              state.posts = await res.json();
+              state.hasFetched = true;
+            } catch (e) {
+              return `<p>Error loading posts.</p>`;
+            }
+          }
+
+          // Generate HTML for the grid
+          const postsHtml = state.posts
+            .map((post) => {
+              const isSaved = state.savedIds.has(post.id);
+              return `
+                    <div class="card">
+                        <div>
+                            <h2>${post.title.substring(0, 30)}...</h2>
+                            <p>${post.body.substring(0, 100)}...</p>
+                        </div>
+                        <button 
+                            class="btn ${isSaved ? "outline" : ""}" 
+                            onclick="toggleSave(${post.id})">
+                            ${isSaved ? "Remove Saved" : "♥ Save Post"}
+                        </button>
+                    </div>`;
+            })
+            .join("");
+
+          return `
+                    <div style="margin-bottom: 20px;">
+                        <h1>Latest Posts</h1>
+                        <p>Fetched from JSONPlaceholder API.</p>
+                    </div>
+                    <div class="grid">${postsHtml}</div>
+                `;
+        },
+
+        saved: async () => {
+          // Filter the global posts array by saved IDs
+          const savedPosts = state.posts.filter((p) =>
+            state.savedIds.has(p.id)
+          );
+
+          if (savedPosts.length === 0) {
+            return `
+                        <div style="text-align: center; margin-top: 50px;">
+                            <h2>No saved items yet.</h2>
+                            <p>Go to the <a href="#posts" style="color:var(--primary)">Posts</a> page to add some!</p>
+                        </div>
+                    `;
+          }
+
+          const html = savedPosts
+            .map(
+              (post) => `
+                    <div class="card">
+                        <h2>${post.title}</h2>
+                        <button class="btn outline" onclick="toggleSave(${post.id})">Remove</button>
+                    </div>
+                `
+            )
+            .join("");
+
+          return `
+                    <h1>Your Saved Collection</h1>
+                    <div class="grid" style="margin-top:20px;">${html}</div>
+                `;
+        },
+      };
+
+      // --- 4. ACTIONS (Event Handlers) ---
+
+      // We attach this to window so the HTML onclick="" strings can find it
+      window.toggleSave = function (id) {
+        if (state.savedIds.has(id)) {
+          state.savedIds.delete(id);
+        } else {
+          state.savedIds.add(id);
+        }
+        updateSavedCount();
+        router(); // Re-render current page to update button styles
+      };
+
+      function updateSavedCount() {
+        document.getElementById("saved-count").innerText = state.savedIds.size;
+      }
+
+      // --- 5. ROUTER ---
+
+      async function router() {
+        const app = document.getElementById("app");
         let hash = window.location.hash.slice(1) || "home";
 
-        // Resolve the route. If it doesn't exist, use 404.
-        const content = routes[hash] || routes["404"];
-
-        // Inject content into the DOM
-        const app = document.getElementById("app");
-        app.innerHTML = content;
-
-        // Re-trigger animation by removing and adding the element (optional polish)
-        app.style.animation = "none";
-        app.offsetHeight; /* trigger reflow */
-        app.style.animation = null;
-
-        updateActiveNav(hash);
-      }
-
-      // --- 3. Update Active Navigation State ---
-      function updateActiveNav(hash) {
-        document.querySelectorAll(".nav-links a").forEach((link) => {
-          const linkHref = link.getAttribute("href").slice(1);
-          if (linkHref === hash) {
-            link.classList.add("active");
-          } else {
-            link.classList.remove("active");
-          }
+        // Highlight Nav
+        document.querySelectorAll(".nav-links a").forEach((el) => {
+          el.classList.toggle("active", el.getAttribute("href") === `#${hash}`);
         });
+
+        // 1. Show Loading Spinner (if async takes time)
+        if (hash === "posts" && !state.hasFetched) {
+          app.innerHTML = '<div class="spinner"></div>';
+        }
+
+        // 2. Get View Function
+        const viewFn = Views[hash] || Views["home"];
+
+        // 3. Render
+        app.innerHTML = await viewFn();
       }
 
-      // --- 4. Event Listeners ---
-      // Listen for hash changes (when user clicks links or back/forward buttons)
+      // --- 6. INIT ---
       window.addEventListener("hashchange", router);
-
-      // Load the correct route when the page first loads
-      window.addEventListener("load", router);
+      window.addEventListener("load", () => {
+        initTheme();
+        router();
+      });
     </script>
   </body>
 </html>
