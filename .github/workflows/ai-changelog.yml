@@ -1,0 +1,120 @@
+name: AI Changelog
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Analyze and Document
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MODEL_ID: "gemini-flash-latest"
+        run: |
+          # 1. Capture Diff
+          # We capture the full diff for the changelog
+          FULL_DIFF=$(git diff ${{ github.event.before }}..HEAD)
+
+          if [ -z "$FULL_DIFF" ]; then
+            echo "No changes detected."
+            exit 0
+          fi
+
+          # 2. Prepare Context for AI
+          # We truncate the diff to ~25,000 chars to avoid token limits, 
+          # but we will put the FULL diff in the changelog file.
+          AI_CONTEXT_DIFF=$(echo "$FULL_DIFF" | head -c 25000)
+
+          # 3. Construct JSON Payload securely with jq
+          jq -n \
+            --arg text "Analyze this git diff and generate a structured summary. Diff: $AI_CONTEXT_DIFF" \
+            '{
+              contents: [{ role: "user", parts: [{ text: $text }] }],
+              generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", enum: ["build", "ci", "chore", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test"] },
+                    description: { type: "string", maxLength: 50 },
+                    body: { type: "string" },
+                    breaking: { type: "boolean" },
+                  },
+                  required: ["type", "description", "body"]
+                }
+              }
+            }' > request.json
+
+          # 4. Call Gemini API
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            "https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}" \
+            -d @request.json > response.json
+
+          # 5. Extract and Format Output
+          if grep -q "candidates" response.json; then
+            cat response.json | jq -r '.candidates[0].content.parts[0].text' > gemini_output.json
+            
+            TYPE=$(jq -r '.type' gemini_output.json)
+            DESC=$(jq -r '.description' gemini_output.json)
+            BODY=$(jq -r '.body' gemini_output.json)
+            BREAKING=$(jq -r '.breaking' gemini_output.json)
+            
+            # --- Append to CHANGELOG.md ---
+            echo "" >> CHANGELOG.md
+            echo "## $(date +'%Y-%m-%d') - ${TYPE}: ${DESC}" >> CHANGELOG.md
+            
+            if [ "$BREAKING" = "true" ]; then
+              echo "> ⚠️ **BREAKING CHANGE**" >> CHANGELOG.md
+            fi
+            
+            echo "" >> CHANGELOG.md
+            echo "$BODY" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            # --- NEW: Append the Raw Diff ---
+            echo "<details>" >> CHANGELOG.md
+            echo "<summary>📄 Click to view raw diff</summary>" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "\`\`\`diff" >> CHANGELOG.md
+            echo "$FULL_DIFF" >> CHANGELOG.md
+            echo "\`\`\`" >> CHANGELOG.md
+            echo "</details>" >> CHANGELOG.md
+            
+            echo "---" >> CHANGELOG.md
+            # ------------------------------
+
+            echo "Generated docs successfully."
+          else
+            echo "Failed to get valid response from Gemini."
+            cat response.json
+            exit 1
+          fi
+
+      - name: Commit and Push
+        run: |
+          git config user.name "gemini-docs[bot]"
+          git config user.email "gemini-docs[bot]@users.noreply.github.com"
+
+          git add CHANGELOG.md
+
+          if git diff --staged --quiet; then
+            echo "No documentation changes generated."
+          else
+            git commit -m "docs: auto-generated changelog [skip ci]"
+            git push
+          fi
