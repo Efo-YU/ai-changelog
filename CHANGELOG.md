@@ -881,3 +881,28 @@ index 3b5a213..c18d178 100644
 ```
 </details>
 ---
+
+## 2025-12-14 - docs: Add hyperlink to workflow file in README
+
+Updated the 'Workflow Installation' section of the README to link directly to the `ai-changelog.yml` file.
+
+<details>
+<summary>📄 Click to view raw diff</summary>
+
+```diff
+diff --git a/README.md b/README.md
+index 3bf0cdc..7728672 100644
+--- a/README.md
++++ b/README.md
+@@ -22,7 +22,7 @@ Go to **Settings > Secrets and variables > Actions** and add the following:
+ 
+ ### 2. Workflow Installation
+ 
+-Add the workflow file to your repository at `.github/workflows/ai-changelog.yml`.
++Add [the workflow file](.github/workflows/ai-changelog.yml) to your repository at `.github/workflows/ai-changelog.yml`.
+ 
+ ## 📝 Example Output (`CHANGELOG.md`)
+ 
+```
+</details>
+---
