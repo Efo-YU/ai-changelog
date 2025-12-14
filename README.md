@@ -22,7 +22,7 @@ Go to **Settings > Secrets and variables > Actions** and add the following:
 
 ### 2. Workflow Installation
 
-Add the workflow file to your repository at `.github/workflows/ai-changelog.yml`.
+Add [the workflow file](.github/workflows/ai-changelog.yml) to your repository at `.github/workflows/ai-changelog.yml`.
 
 ## 📝 Example Output (`CHANGELOG.md`)
 
