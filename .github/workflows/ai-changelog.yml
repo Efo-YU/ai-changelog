@@ -141,10 +141,12 @@ jobs:
             echo "" >> CHANGELOG.md
 
             # --- Append the Diff Details ---
+            # Use variable to prevent literal backticks from breaking the code block when this file is diffed
+            B="\`"
             echo "<details>" >> CHANGELOG.md
             echo "<summary>📄 Click to view raw diff</summary>" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
-            echo "\`\`\`diff" >> CHANGELOG.md
+            echo "${B}${B}${B}diff" >> CHANGELOG.md
             
             # 1. Show the visible code diff
             if [ ! -z "$CLEAN_DIFF" ]; then
@@ -163,7 +165,7 @@ jobs:
               echo "$HIDDEN_DIFF_SUMMARY" >> CHANGELOG.md
             fi
             
-            echo "\`\`\`" >> CHANGELOG.md
+            echo "${B}${B}${B}" >> CHANGELOG.md
             echo "</details>" >> CHANGELOG.md
             
             echo "---" >> CHANGELOG.md
