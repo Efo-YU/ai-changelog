@@ -1259,3 +1259,42 @@ index 7728672..1df9f12 100644
 ```
 </details>
 ---
+
+## 2025-12-15 - ci: Prevent backtick quoting issue in changelog generation
+
+Refactors the script step that generates the raw diff code block within the CHANGELOG.md. We now use a shell variable to hold the backtick character and construct the markdown code fences (${B}${B}${B}diff). This prevents potential issues where literal backticks might prematurely terminate a shell string or markdown code block when the workflow file itself is being analyzed or included in a diff summary.
+
+<details>
+<summary>📄 Click to view raw diff</summary>
+
+```diff
+diff --git a/.github/workflows/ai-changelog.yml b/.github/workflows/ai-changelog.yml
+index 9e9eaa6..60a4996 100644
+--- a/.github/workflows/ai-changelog.yml
++++ b/.github/workflows/ai-changelog.yml
+@@ -141,10 +141,12 @@ jobs:
+             echo "" >> CHANGELOG.md
+ 
+             # --- Append the Diff Details ---
++            # Use variable to prevent literal backticks from breaking the code block when this file is diffed
++            B="\`"
+             echo "<details>" >> CHANGELOG.md
+             echo "<summary>📄 Click to view raw diff</summary>" >> CHANGELOG.md
+             echo "" >> CHANGELOG.md
+-            echo "\`\`\`diff" >> CHANGELOG.md
++            echo "${B}${B}${B}diff" >> CHANGELOG.md
+             
+             # 1. Show the visible code diff
+             if [ ! -z "$CLEAN_DIFF" ]; then
+@@ -163,7 +165,7 @@ jobs:
+               echo "$HIDDEN_DIFF_SUMMARY" >> CHANGELOG.md
+             fi
+             
+-            echo "\`\`\`" >> CHANGELOG.md
++            echo "${B}${B}${B}" >> CHANGELOG.md
+             echo "</details>" >> CHANGELOG.md
+             
+             echo "---" >> CHANGELOG.md
+```
+</details>
+---
