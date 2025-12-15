@@ -906,3 +906,356 @@ index 3bf0cdc..7728672 100644
 ```
 </details>
 ---
+
+## 2025-12-15 - feat: Implement smart diff filtering via .logignore in changelog workflow
+
+The AI changelog generation workflow now supports reading patterns from a new `.logignore` file. This prevents large/binary files (such as media, archives, and lockfiles) from being included in the full diff content sent to the AI model or written into the CHANGELOG.md file.
+
+The workflow now generates a 'clean diff' (code changes) and a 'hidden files summary' (list of excluded files). Both are used to generate the summary, and both are included in the raw diff section of the changelog.
+
+Updated `README.md` to document the new optional filtering setup and included an extensive set of default exclusion patterns in the new `.logignore` file.
+
+<details>
+<summary>📄 Click to view raw diff</summary>
+
+```diff
+diff --git a/.github/workflows/ai-changelog.yml b/.github/workflows/ai-changelog.yml
+index c4fbb14..9e9eaa6 100644
+--- a/.github/workflows/ai-changelog.yml
++++ b/.github/workflows/ai-changelog.yml
+@@ -24,24 +24,76 @@ jobs:
+         env:
+           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+           MODEL_ID: "gemini-flash-latest"
++          IGNORE_FILE: ".logignore"
+         run: |
+-          # 1. Capture Diff
+-          # We capture the full diff for the changelog
+-          FULL_DIFF=$(git diff ${{ github.event.before }}..HEAD)
++          # --- 1. Configuration & Diff Capture ---
+ 
+-          if [ -z "$FULL_DIFF" ]; then
++          # Disable glob expansion to handle patterns safely
++          set -f
++
++          EXCLUDE_PATTERNS_LIST=""
++          GIT_EXCLUDE_ARGS=""
++
++          # Check if the ignore file exists
++          if [ -f "$IGNORE_FILE" ]; then
++            echo "Loading ignore patterns from $IGNORE_FILE..."
++            # Read file, remove comments (#) and empty lines, then join with spaces
++            EXCLUDE_PATTERNS_LIST=$(grep -vE "^\s*#" "$IGNORE_FILE" | grep -vE "^\s*$" | tr '\n' ' ')
++          else
++            echo "Warning: $IGNORE_FILE not found. No files will be excluded."
++          fi
++
++          # Build git exclude arguments (e.g., :(exclude)*.png)
++          for pattern in $EXCLUDE_PATTERNS_LIST; do
++            GIT_EXCLUDE_ARGS="$GIT_EXCLUDE_ARGS :(exclude)$pattern"
++          done
++
++          # A. Clean Diff (Code changes only, content included)
++          #    Use the exclude arguments to filter out heavy/binary files from the full diff content
++          CLEAN_DIFF=$(git diff ${{ github.event.before }}..HEAD -- . $GIT_EXCLUDE_ARGS)
++
++          # B. Hidden Files Summary (Heavy files, list only)
++          #    Capture only the status and names of files that match the exclude patterns
++          #    Note: We pass patterns directly to target them specifically
++          HIDDEN_DIFF_SUMMARY=""
++          if [ ! -z "$EXCLUDE_PATTERNS_LIST" ]; then
++             HIDDEN_DIFF_SUMMARY=$(git diff --name-status ${{ github.event.before }}..HEAD -- $EXCLUDE_PATTERNS_LIST)
++          fi
++
++          # Re-enable glob expansion
++          set +f
++
++          # Exit if no changes detected in either category
++          if [ -z "$CLEAN_DIFF" ] && [ -z "$HIDDEN_DIFF_SUMMARY" ]; then
+             echo "No changes detected."
+             exit 0
+           fi
+ 
+-          # 2. Prepare Context for AI
+-          # We truncate the diff to ~25,000 chars to avoid token limits, 
+-          # but we will put the FULL diff in the changelog file.
+-          AI_CONTEXT_DIFF=$(echo "$FULL_DIFF" | head -c 25000)
++          # --- 2. Prepare Context for AI ---
++
++          # Start building the prompt
++          AI_PROMPT_TEXT="Analyze this git diff and generate a structured summary."
++
++          # If there are hidden files, inform the AI about them
++          if [ ! -z "$HIDDEN_DIFF_SUMMARY" ]; then
++            AI_PROMPT_TEXT="$AI_PROMPT_TEXT
+ 
+-          # 3. Construct JSON Payload securely with jq
++            The following files were changed but their diff content is excluded (large/binary/lockfiles):
++            $HIDDEN_DIFF_SUMMARY"
++          fi
++
++          # Append the Clean Diff (truncated to avoid token limits)
++          # This allows the AI to see the actual code logic changes
++          AI_PROMPT_TEXT="$AI_PROMPT_TEXT
++
++          Diff Content:
++          $(echo "$CLEAN_DIFF" | head -c 25000)"
++
++          # --- 3. Call Gemini API ---
++
++          # Construct the JSON payload using jq for safety
+           jq -n \
+-            --arg text "Analyze this git diff and generate a structured summary. Diff: $AI_CONTEXT_DIFF" \
++            --arg text "$AI_PROMPT_TEXT" \
+             '{
+               contents: [{ role: "user", parts: [{ text: $text }] }],
+               generationConfig: {
+@@ -59,14 +111,16 @@ jobs:
+               }
+             }' > request.json
+ 
+-          # 4. Call Gemini API
++          # Send request to Gemini
+           curl -s -X POST \
+             -H "Content-Type: application/json" \
+             "https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}" \
+             -d @request.json > response.json
+ 
+-          # 5. Extract and Format Output
++          # --- 4. Format Output for CHANGELOG ---
++
+           if grep -q "candidates" response.json; then
++            # Extract JSON fields
+             cat response.json | jq -r '.candidates[0].content.parts[0].text' > gemini_output.json
+             
+             TYPE=$(jq -r '.type' gemini_output.json)
+@@ -74,7 +128,7 @@ jobs:
+             BODY=$(jq -r '.body' gemini_output.json)
+             BREAKING=$(jq -r '.breaking' gemini_output.json)
+             
+-            # --- Append to CHANGELOG.md ---
++            # --- Append Entry to CHANGELOG.md ---
+             echo "" >> CHANGELOG.md
+             echo "## $(date +'%Y-%m-%d') - ${TYPE}: ${DESC}" >> CHANGELOG.md
+             
+@@ -86,12 +140,29 @@ jobs:
+             echo "$BODY" >> CHANGELOG.md
+             echo "" >> CHANGELOG.md
+ 
+-            # --- NEW: Append the Raw Diff ---
++            # --- Append the Diff Details ---
+             echo "<details>" >> CHANGELOG.md
+             echo "<summary>📄 Click to view raw diff</summary>" >> CHANGELOG.md
+             echo "" >> CHANGELOG.md
+             echo "\`\`\`diff" >> CHANGELOG.md
+-            echo "$FULL_DIFF" >> CHANGELOG.md
++            
++            # 1. Show the visible code diff
++            if [ ! -z "$CLEAN_DIFF" ]; then
++              echo "$CLEAN_DIFF" >> CHANGELOG.md
++            fi
++
++            # 2. Show the summary list of hidden/ignored files
++            if [ ! -z "$HIDDEN_DIFF_SUMMARY" ]; then
++              if [ ! -z "$CLEAN_DIFF" ]; then
++                echo "" >> CHANGELOG.md
++              fi
++              echo "# -------------------------------------------------" >> CHANGELOG.md
++              echo "# The following files were changed but content is hidden:" >> CHANGELOG.md
++              echo "# (See .logignore for exclusion rules)" >> CHANGELOG.md
++              echo "# -------------------------------------------------" >> CHANGELOG.md
++              echo "$HIDDEN_DIFF_SUMMARY" >> CHANGELOG.md
++            fi
++            
+             echo "\`\`\`" >> CHANGELOG.md
+             echo "</details>" >> CHANGELOG.md
+             
+diff --git a/.logignore b/.logignore
+new file mode 100644
+index 0000000..162942a
+--- /dev/null
++++ b/.logignore
+@@ -0,0 +1,117 @@
++# --- Video ---
++*.mp4
++*.mov
++*.avi
++*.mkv
++*.wmv
++*.flv
++*.webm
++*.m4v
++*.3gp
++*.mpeg
++*.mpg
++*.ogv
++*.ts
++*.mts
++*.m2ts
++
++# --- Audio ---
++*.mp3
++*.wav
++*.flac
++*.aac
++*.ogg
++*.wma
++*.m4a
++*.aiff
++*.alac
++*.pcm
++
++# --- Images & Vectors ---
++*.svg
++*.svgz
++*.png
++*.jpg
++*.jpeg
++*.gif
++*.bmp
++*.tiff
++*.tif
++*.webp
++*.heic
++*.raw
++*.cr2
++*.nef
++*.orf
++*.sr2
++*.ico
++*.psd
++*.ai
++*.eps
++*.indd
++
++# --- Archives & Compressed ---
++*.zip
++*.rar
++*.7z
++*.tar
++*.gz
++*.tgz
++*.bz2
++*.xz
++*.iso
++*.dmg
++*.pkg
++*.jar
++*.war
++*.ear
++
++# --- 3D Models & CAD ---
++*.obj
++*.fbx
++*.blend
++*.stl
++*.dae
++*.3ds
++*.max
++*.ma
++*.mb
++*.dwg
++*.dxf
++*.gltf
++*.glb
++
++# --- Documents & Data ---
++*.pdf
++*.doc
++*.docx
++*.ppt
++*.pptx
++*.xls
++*.xlsx
++*.csv
++*.sql
++*.db
++*.sqlite
++*.sqlite3
++*.mdb
++*.accdb
++
++# --- Executables & Libraries ---
++*.exe
++*.dll
++*.so
++*.dylib
++*.bin
++*.msi
++*.apk
++*.ipa
++*.app
++
++# --- System Junk ---
++.DS_Store
++Thumbs.db
++Desktop.ini
++package-lock.json
++yarn.lock
++pnpm-lock.yaml
+diff --git a/README.md b/README.md
+index 7728672..1df9f12 100644
+--- a/README.md
++++ b/README.md
+@@ -7,6 +7,7 @@ Automated changelog generation using GitHub Actions and Google Gemini. On every
+ - **AI Analysis**: Converts raw `git diff` into human-readable summaries using Gemini.
+ - **Structured Format**: Generates logs following Conventional Commits (type, scope, breaking changes).
+ - **Diff Tracking**: Appends the raw code changes in a collapsible `<details>` block for full traceability.
++- **Smart Filtering**: Automatically hides binaries, heavy assets, and lockfiles from the log to keep it clean (configurable via `.logignore`).
+ - **Loop Prevention**: Automatically tags commits with `[skip ci]` to prevent infinite workflow loops.
+ 
+ ## 🚀 Setup
+@@ -24,6 +25,29 @@ Go to **Settings > Secrets and variables > Actions** and add the following:
+ 
+ Add [the workflow file](.github/workflows/ai-changelog.yml) to your repository at `.github/workflows/ai-changelog.yml`.
+ 
++### 3. (Optional) Custom Ignore Rules
++
++To prevent large files (videos, images, lockfiles) from cluttering your changelog or consuming AI tokens, add a `.logignore` file to your root directory.
++
++**Example `.logignore`:**
++
++```text
++# Lockfiles
++package-lock.json
++yarn.lock
++
++# Assets
++*.png
++*.jpg
++*.mp4
++*.pdf
++```
++
++## ⚠️ Notes
++
++- **Protected Branches**: Because the workflow commits directly to `main`, the `GH_PAT` is required to bypass standard branch protection rules (or you must allow the bot user).
++- **Token Limits**: Diffs are intelligently filtered using `.logignore` and then truncated to \~25k chars to ensure reliability.
++
+ ## 📝 Example Output (`CHANGELOG.md`)
+ 
+ ## 2025-12-07 - feat: add infinite scroll
+@@ -37,13 +61,13 @@ Implemented intersection observer to load items dynamically when scrolling to th
+ + const observer = new IntersectionObserver((entries) => {
+ +   if (entries[0].isIntersecting) loadMore();
+ + });
++
++# -------------------------------------------------
++# The following files were changed but content is hidden:
++# (See .logignore for exclusion rules)
++# -------------------------------------------------
++M       src/assets/demo-video.mp4
++M       package-lock.json
+ ```
+ 
+ </details>
+-
+-## ⚠️ Notes
+-
+-- **Protected Branches**: Because the workflow commits directly to `main`, the `GH_PAT` is required to bypass standard branch protection rules (or you must allow the bot user).
+-- **Token Limits**: Diffs sent to the AI are truncated to \~25k chars to ensure reliability, but the full diff is always saved to the log file.
+-
+-<!-- end list -->
+```
+</details>
+---
