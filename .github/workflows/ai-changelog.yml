@@ -24,24 +24,76 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MODEL_ID: "gemini-flash-latest"
+          IGNORE_FILE: ".logignore"
         run: |
-          # 1. Capture Diff
-          # We capture the full diff for the changelog
-          FULL_DIFF=$(git diff ${{ github.event.before }}..HEAD)
+          # --- 1. Configuration & Diff Capture ---
 
-          if [ -z "$FULL_DIFF" ]; then
+          # Disable glob expansion to handle patterns safely
+          set -f
+
+          EXCLUDE_PATTERNS_LIST=""
+          GIT_EXCLUDE_ARGS=""
+
+          # Check if the ignore file exists
+          if [ -f "$IGNORE_FILE" ]; then
+            echo "Loading ignore patterns from $IGNORE_FILE..."
+            # Read file, remove comments (#) and empty lines, then join with spaces
+            EXCLUDE_PATTERNS_LIST=$(grep -vE "^\s*#" "$IGNORE_FILE" | grep -vE "^\s*$" | tr '\n' ' ')
+          else
+            echo "Warning: $IGNORE_FILE not found. No files will be excluded."
+          fi
+
+          # Build git exclude arguments (e.g., :(exclude)*.png)
+          for pattern in $EXCLUDE_PATTERNS_LIST; do
+            GIT_EXCLUDE_ARGS="$GIT_EXCLUDE_ARGS :(exclude)$pattern"
+          done
+
+          # A. Clean Diff (Code changes only, content included)
+          #    Use the exclude arguments to filter out heavy/binary files from the full diff content
+          CLEAN_DIFF=$(git diff ${{ github.event.before }}..HEAD -- . $GIT_EXCLUDE_ARGS)
+
+          # B. Hidden Files Summary (Heavy files, list only)
+          #    Capture only the status and names of files that match the exclude patterns
+          #    Note: We pass patterns directly to target them specifically
+          HIDDEN_DIFF_SUMMARY=""
+          if [ ! -z "$EXCLUDE_PATTERNS_LIST" ]; then
+             HIDDEN_DIFF_SUMMARY=$(git diff --name-status ${{ github.event.before }}..HEAD -- $EXCLUDE_PATTERNS_LIST)
+          fi
+
+          # Re-enable glob expansion
+          set +f
+
+          # Exit if no changes detected in either category
+          if [ -z "$CLEAN_DIFF" ] && [ -z "$HIDDEN_DIFF_SUMMARY" ]; then
             echo "No changes detected."
             exit 0
           fi
 
-          # 2. Prepare Context for AI
-          # We truncate the diff to ~25,000 chars to avoid token limits, 
-          # but we will put the FULL diff in the changelog file.
-          AI_CONTEXT_DIFF=$(echo "$FULL_DIFF" | head -c 25000)
+          # --- 2. Prepare Context for AI ---
 
-          # 3. Construct JSON Payload securely with jq
+          # Start building the prompt
+          AI_PROMPT_TEXT="Analyze this git diff and generate a structured summary."
+
+          # If there are hidden files, inform the AI about them
+          if [ ! -z "$HIDDEN_DIFF_SUMMARY" ]; then
+            AI_PROMPT_TEXT="$AI_PROMPT_TEXT
+
+            The following files were changed but their diff content is excluded (large/binary/lockfiles):
+            $HIDDEN_DIFF_SUMMARY"
+          fi
+
+          # Append the Clean Diff (truncated to avoid token limits)
+          # This allows the AI to see the actual code logic changes
+          AI_PROMPT_TEXT="$AI_PROMPT_TEXT
+
+          Diff Content:
+          $(echo "$CLEAN_DIFF" | head -c 25000)"
+
+          # --- 3. Call Gemini API ---
+
+          # Construct the JSON payload using jq for safety
           jq -n \
-            --arg text "Analyze this git diff and generate a structured summary. Diff: $AI_CONTEXT_DIFF" \
+            --arg text "$AI_PROMPT_TEXT" \
             '{
               contents: [{ role: "user", parts: [{ text: $text }] }],
               generationConfig: {
@@ -59,14 +111,16 @@ jobs:
               }
             }' > request.json
 
-          # 4. Call Gemini API
+          # Send request to Gemini
           curl -s -X POST \
             -H "Content-Type: application/json" \
             "https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}" \
             -d @request.json > response.json
 
-          # 5. Extract and Format Output
+          # --- 4. Format Output for CHANGELOG ---
+
           if grep -q "candidates" response.json; then
+            # Extract JSON fields
             cat response.json | jq -r '.candidates[0].content.parts[0].text' > gemini_output.json
             
             TYPE=$(jq -r '.type' gemini_output.json)
@@ -74,7 +128,7 @@ jobs:
             BODY=$(jq -r '.body' gemini_output.json)
             BREAKING=$(jq -r '.breaking' gemini_output.json)
             
-            # --- Append to CHANGELOG.md ---
+            # --- Append Entry to CHANGELOG.md ---
             echo "" >> CHANGELOG.md
             echo "## $(date +'%Y-%m-%d') - ${TYPE}: ${DESC}" >> CHANGELOG.md
             
@@ -86,12 +140,29 @@ jobs:
             echo "$BODY" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
 
-            # --- NEW: Append the Raw Diff ---
+            # --- Append the Diff Details ---
             echo "<details>" >> CHANGELOG.md
             echo "<summary>📄 Click to view raw diff</summary>" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "\`\`\`diff" >> CHANGELOG.md
-            echo "$FULL_DIFF" >> CHANGELOG.md
+            
+            # 1. Show the visible code diff
+            if [ ! -z "$CLEAN_DIFF" ]; then
+              echo "$CLEAN_DIFF" >> CHANGELOG.md
+            fi
+
+            # 2. Show the summary list of hidden/ignored files
+            if [ ! -z "$HIDDEN_DIFF_SUMMARY" ]; then
+              if [ ! -z "$CLEAN_DIFF" ]; then
+                echo "" >> CHANGELOG.md
+              fi
+              echo "# -------------------------------------------------" >> CHANGELOG.md
+              echo "# The following files were changed but content is hidden:" >> CHANGELOG.md
+              echo "# (See .logignore for exclusion rules)" >> CHANGELOG.md
+              echo "# -------------------------------------------------" >> CHANGELOG.md
+              echo "$HIDDEN_DIFF_SUMMARY" >> CHANGELOG.md
+            fi
+            
             echo "\`\`\`" >> CHANGELOG.md
             echo "</details>" >> CHANGELOG.md
             
